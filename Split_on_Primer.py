@@ -14,7 +14,7 @@
 # contact: youri.lammers@naturalis.nl / youri.lammers@gmail.com
 
 # import the modules used by the script
-import os, argparse, itertools, sys
+import os, argparse, itertools, sys, multiprocessing, csv
 
 # Retrieve the commandline arguments
 parser = argparse.ArgumentParser(description = 'Split a sequence file based on a list of primers.')
@@ -22,32 +22,61 @@ parser = argparse.ArgumentParser(description = 'Split a sequence file based on a
 parser.add_argument('-f', '--sequence_file', metavar='Sequence file', dest='sequence', type=str,
 			help='The sequence file in either fastq or fasta format.')
 parser.add_argument('-p', '--primers', metavar='Primer file', dest='primer', type=str,
-			help='Comma seperated value file containing the primers. Format = primer_name,primer_sequence')
+			help='Seperated value file containing the primers. Format = primer_name,primer_sequence')
 parser.add_argument('-m', '--mis', metavar='Mismatches allowed', dest='mis', type=int,
 			help='The maximum number of mismatches allowed between the primer and reads (default = 0)', default=0)
 parser.add_argument('-s', '--shift', metavar='Nucleotide shift allowed', dest='shift', type=int,
 			help='The maximum sequence shift allowed between the primer and reads (default = 0)', default=0)
 parser.add_argument('-t', '--trim', action='store_true', dest='trim',
 			help='Trim the primers from the sequences after splitting.')
+parser.add_argument('-d', '--delimiter', metavar='CSV delimiter', dest='delimiter', type=str,
+			help='CSV delimiter used in the primer file (default = \',\')', default=',')
+parser.add_argument('-c', '--cores', metavar='Number of Cores', dest='cores', type=int,
+			help='The number of CPU cores the script will use (default = max number of CPUs available)', default=multiprocessing.cpu_count())
+parser.add_argument('--chunk', metavar='Chunk size', dest='chunk_size', type=int,
+			help='The maximum number of reads that will be loaded into the memory.\nA higher value will be faster but will take up more RAM space. (default = 100.000 (about 100-200mb depending on read size))', default=100000)
 
 args = parser.parse_args()
 
 def extract_sequences():
 
-	# open the sequence file submitted by the user
+	# open the sequence file submitted by the user, get 
+	# the file format and rewind the file
 	sequence_file = open(args.sequence)
+	file_format = sequence_file.readline()[0]
+	sequence_file.seek(0)
 
 	# create a iterative index of all the headers
-        lines = (x[1] for x in itertools.groupby(sequence_file, key=lambda line: line[0] == '@' or line[0] == '>'))
+        lines = (x[1] for x in itertools.groupby(sequence_file, key=lambda line: line[0] == file_format))
 
 	# walk through the header and obtain the sequences (and quality score if applicable)
         for headers in lines:
-                header = headers.next().strip()
-                sequence = [line.strip() for line in lines.next()]
+		header = headers.next().strip()
+		if file_format == '>': sequence = [''.join(line.strip() for line in lines.next())]
+		else:
+			temporary_list, sequence, quality = [line.strip() for line in lines.next()], [], []
+		
+			# get the multi line sequences and break at the sequence - quality
+			# seperator symbol (+)
+			while len(temporary_list) > 0:
+				line = temporary_list.pop(0)
+				if line[0] == '+':
+					break
+				sequence.append(line)
+			quality = temporary_list
 
-		# adjust for potential quality score lines starting with the @ symbol
-                if len(sequence) == 2: sequence.append(headers.next().strip())
-
+			# if the length of the sequences differs from the length of the
+			# quality scores (because the quality line starts with a '@') get
+			# the next quality line and append it to the previous one
+			while len(quality) < len(sequence):
+				if len(quality) == 0 and len(sequence) == 1:
+					quality.append(headers.next().strip())
+				else:
+					quality += [line.strip() for line in lines.next()]
+			
+			# join the sequence lines and quality lines together
+			sequence = [''.join(sequence), ''.join(quality)]
+				
 		# yield the header + sequence
 		yield [header, sequence]
 
@@ -60,7 +89,7 @@ def extract_primers():
 
 	# create the primer list, the list format is:
 	# [primer_name, primer_squence+shift, primer_file, original_length]
-	primer_list = []
+	primer_list, file_dictionary = [], {}
 
 	# set the output dictionary (same folders as the sequence file)
 	# and get the extention for the ouput files (sames as input file)
@@ -68,8 +97,11 @@ def extract_primers():
 	extension = os.path.splitext(args.sequence)[1]
 
 	# walk through the primers in the primer file
-	for line in open(args.primer):
-		line = line.strip().split(',')
+	primer_file = csv.reader(open(args.primer), delimiter=args.delimiter)
+	for line in primer_file:
+
+		# sanatize the primer names
+		line[0] = ''.join([l for l in line[0] if l.isalnum() or l in '-_'])
 
 		# open the output_file
 		output_file = open(directory+line[0]+extension,'w')
@@ -78,13 +110,17 @@ def extract_primers():
 		# variants with the sequence shifts needed
 		length = len(line[1])
 		for i in range(0,args.shift+1):
-			primer_list.append([line[0], line[1][i:], output_file, length])
+			primer_list.append([line[0], line[1][i:], length])
+		
+		# add output file to the file_dictionary
+		file_dictionary[line[0]] = output_file
 
 	# create the unsorted file
-	primer_list.append(['unsorted',0,open(directory+'unsorted'+extension,'w'),0])
+	#primer_list.append(['unsorted',0,open(directory+'unsorted'+extension,'w'),0])
+	file_dictionary['unsorted'] = open(directory+'unsorted'+extension,'w')
 
 	# return the primer dictionary
-	return primer_list
+	return [primer_list, file_dictionary]
 
 
 def hamming_distance(sequence, primer):
@@ -119,7 +155,7 @@ def trim_primer(sequence, length):
 	# function is only used if the --trim arguments is provided
 	sequence[1][0] = sequence[1][0][length:]
 	if len(sequence[1]) > 1:
-		sequence[1][2] = sequence[1][2][length:]
+		sequence[1][1] = sequence[1][1][length:]
 	
 	# return the trimmed sequence
 	return sequence
@@ -132,11 +168,8 @@ def compare_sequences(sequence, primer_list, read_shift, method, distance_result
 	# parse through the primers in the primer dictionary
 	for primer in primer_list:
 
-		# skip the unsorted category
-		if primer[0] == 'unsorted': continue
-		
 		# get the primer information
-		primer_name, primer_sequence, primer_file, primer_length = primer
+		primer_name, primer_sequence, primer_length = primer
 		primer_shift = primer_length - len(primer_sequence)
 
 		# skip same shift comparisons between the read and primers unless the shift
@@ -152,7 +185,7 @@ def compare_sequences(sequence, primer_list, read_shift, method, distance_result
 			distance = levenshtein_distance(sequence[:len(primer_sequence)], primer_sequence) + abs(read_shift - primer_shift)
 		
 		# append the distance results if they are lower than the mis threshold
-		if distance <= max_mis: distance_results.append([distance, primer_file, primer_length])
+		if distance <= max_mis: distance_results.append([distance, primer_name, primer_length, primer_shift])
 		
 		# stop calculating distances when the distance equals the shift
 		if distance == 0: break
@@ -161,7 +194,7 @@ def compare_sequences(sequence, primer_list, read_shift, method, distance_result
 	return distance_results
 
 
-def find_best_primer(read, primer_list):
+def find_best_primer((read, primer_list, size)):
 
 	# worker thread for the distance calculations
 	# this function will calculate the distance
@@ -171,9 +204,13 @@ def find_best_primer(read, primer_list):
 	# list with the distance results
 	distance_results = []
 
+	if len(read[1][0]) <= size:
+		#write_read(read, primer_list[-1][2])
+		return (read, 'unsorted')
+
 	# create the sequence for each potential read shift indicated by
 	# the --shift arugment
-	for read_shift in range(0,args.shift+1):
+	for read_shift in range(0,1):#args.shift+1):
 
 		# set the shifted sequence
 		sequence = read[1][0][read_shift:]
@@ -205,6 +242,7 @@ def find_best_primer(read, primer_list):
 
 		# trim the read if --trim is selected
 		if args.trim == True: read = trim_primer(read, primer[2])
+		return (read, primer[1])
 
 		# save the read to the output file
 		#write_read(read, primer[1])
@@ -212,7 +250,7 @@ def find_best_primer(read, primer_list):
 		# no primer matches with the read, the read unsorted
 		# will be written to the unsorted file
 		#write_read(read, primer_list[-1][2])
-		pass
+		return (read, 'unsorted')
 
 
 def write_read(read, output_file):
@@ -220,30 +258,42 @@ def write_read(read, output_file):
 	# write the read to the output_file in either fasta or fastq
 	# format depending on the read
 	if len(read[1]) > 1:
-		output_file.write('{0}\n{1}\n+\n{2}\n'.format(read[0], read[1][0], read[1][2]))
+		output_file.write('{0}\n{1}\n+\n{2}\n'.format(read[0], read[1][0], read[1][1]))
 	else:
 		output_file.write('{0}\n{1}\n'.format(read[0], '\n'.join([read[1][0][i:i+60] for i in range(0, len(read[1][0]), 60)])))
 
-	
+
 def main ():
 
 	# obtain the list with the primer names
 	# sequences and mismatch shifts
-	primer_list = extract_primers()
+	primer_list, file_dictionary = extract_primers()
 
 	# get the largest value in the primer list + max mismatch
-	size = sorted(((value[3] + args.mis) for value in primer_list), reverse=True)[0]
+	size = sorted(((value[2] + args.mis) for value in primer_list), reverse=True)[0]
 
-	# parse through the sequences and find
-	# the closest matching primer, write the results
-	# to the output file for said primer.
-	for read in extract_sequences():
-		# if the read is shorter than the maximum primer size
-		# write the read to the unsorted file
-		if len(read[1][0]) <= size:
-			write_read(read, primer_list[-1][2])
+	# set the chunk size for the generators and worker threads
+	if args.chunk_size < (args.cores*10): sub_chunk = 1
+	else: sub_chunk = int(args.chunk_size/(args.cores*10))
+
+	read_generator = extract_sequences()
+	while True:	
+
+		# create a sub iterator with a N number of reads to conserve memory
+		# N is provided by the --chunk argument
+		group = [list([key,chunk]) for key, chunk in itertools.islice(read_generator, args.chunk_size)]
+		if group:
+			
+			# start a number of processes that equal the number of cores provided by --cores
+			# obtain the results for each process and send them to the write function
+			pool = multiprocessing.Pool(processes=args.cores)
+			it = pool.imap_unordered(find_best_primer, [(read,  primer_list, size) for read in group], chunksize=sub_chunk)
+			for result in it:
+				write_read(result[0], file_dictionary[result[1]])
+			pool.close()
+			pool.join()
 		else:
-			find_best_primer(read, primer_list)
+			break
 	
 
 if __name__ == '__main__':
