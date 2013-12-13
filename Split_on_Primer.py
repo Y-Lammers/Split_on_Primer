@@ -205,12 +205,11 @@ def find_best_primer((read, primer_list, size)):
 	distance_results = []
 
 	if len(read[1][0]) <= size:
-		#write_read(read, primer_list[-1][2])
 		return (read, 'unsorted')
 
 	# create the sequence for each potential read shift indicated by
 	# the --shift arugment
-	for read_shift in range(0,1):#args.shift+1):
+	for read_shift in range(0,args.shift+1):
 
 		# set the shifted sequence
 		sequence = read[1][0][read_shift:]
