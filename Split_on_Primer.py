@@ -116,7 +116,6 @@ def extract_primers():
 		file_dictionary[line[0]] = output_file
 
 	# create the unsorted file
-	#primer_list.append(['unsorted',0,open(directory+'unsorted'+extension,'w'),0])
 	file_dictionary['unsorted'] = open(directory+'unsorted'+extension,'w')
 
 	# return the primer dictionary
@@ -176,7 +175,7 @@ def compare_sequences(sequence, primer_list, read_shift, method, distance_result
 		# equals zero, futhermore skip shift that have been carried out before for the
 		# primer - read combination. (ie read shift 2, primer shift 1 equals 
 		# read shift 1, primer shift 0)
-		if read_shift >= 1 and (read_shift - primer_shift) < read_shift: continue
+		if read_shift != 0 and primer_shift != 0: continue
 
 		# calculate the distance with either the hamming or levenshtein method		
 		if method == 'hamming': 
@@ -185,11 +184,10 @@ def compare_sequences(sequence, primer_list, read_shift, method, distance_result
 			distance = levenshtein_distance(sequence[:len(primer_sequence)], primer_sequence) + abs(read_shift - primer_shift)
 		
 		# append the distance results if they are lower than the mis threshold
-		if distance <= max_mis: distance_results.append([distance, primer_name, primer_length, primer_shift])
+		if distance <= max_mis: 
+			distance_results.append([distance, primer_name, primer_length])
+			break
 		
-		# stop calculating distances when the distance equals the shift
-		if distance == 0: break
-	
 	# return the calculated distance_results list (sorted)
 	return distance_results
 
@@ -204,6 +202,7 @@ def find_best_primer((read, primer_list, size)):
 	# list with the distance results
 	distance_results = []
 
+	# if the sequence is too short, return the read as unsorted
 	if len(read[1][0]) <= size:
 		return (read, 'unsorted')
 
@@ -218,15 +217,17 @@ def find_best_primer((read, primer_list, size)):
 		# the hamming distance method
 		distance_results = compare_sequences(sequence, primer_list, read_shift, 'hamming', distance_results, args.mis)
 
-		# if the best result equals the current shift, stop further comparisons
+		# if a result is obtained, jump out of the loop and return the primer
 		if len(distance_results) > 0:
-			distance_results.sort()
-			if distance_results[0][0] == 0: break
+			break
 
-	# If no distance could be obtained with the hamming distance method, the Levenshtein
-	# method is used. Method is only used if the maximum number of mismatches is larger than 1.
-	if len(distance_results) == 0 and args.mis > 0:
-		distance_results = compare_sequences(read[1][0], primer_list, 0, 'levenshtein', distance_results, args.mis)
+		# If no distance could be obtained with the hamming distance method, the Levenshtein
+		# method is used. Method is only used if the maximum number of mismatches is larger than 1.
+		distance_results = compare_sequences(sequence, primer_list, read_shift, 'levenshtein', distance_results, args.mis)
+
+		# again jump out if a hit is found
+		if len(distance_results) > 0:
+			break
 
 	
 	# pick the best match if there are multiple valid
@@ -241,14 +242,12 @@ def find_best_primer((read, primer_list, size)):
 
 		# trim the read if --trim is selected
 		if args.trim == True: read = trim_primer(read, primer[2])
-		return (read, primer[1])
 
-		# save the read to the output file
-		#write_read(read, primer[1])
+		# return the read and primer
+		return (read, primer[1])
 	else:
 		# no primer matches with the read, the read unsorted
 		# will be written to the unsorted file
-		#write_read(read, primer_list[-1][2])
 		return (read, 'unsorted')
 
 
