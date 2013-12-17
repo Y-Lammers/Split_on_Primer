@@ -8,7 +8,7 @@ labels) are usually attached to the separate samples prior to sequencing. These 
 be reused or skipped if the samples differ from each other based on the primers used for
 sequencing. For example in DNA barcoding projects ITS samples can be mixed with CO1 samples.
 The Split\_on\_Primer.py script is desigend to split these next generation reads based on
-the primers used for sequencing. Both substitution (hammington) and fuzzy (levenshtein)
+the primers used for sequencing. Both substitution (hamming) and fuzzy (levenshtein)
 string searches are used to accurately determine the origin of a read.
 
 Installation instructions
