@@ -14,8 +14,8 @@ string searches are used to accurately determine the origin of a read.
 Installation instructions
 -------------------------
 
-The script can be cloned from the github repository and be directly ran from the commandline.
-The python code should work with both python versions 2.7 and 3.0 or higher.
+The script can be cloned from the github repository. The python code works with 
+both python versions 2.7 and 3.0 or higher.
 
 General usage
 -------------
