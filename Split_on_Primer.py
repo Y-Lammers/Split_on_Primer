@@ -22,7 +22,7 @@ parser = argparse.ArgumentParser(description = 'Split a sequence file based on a
 parser.add_argument('-f', '--sequence_file', metavar='Sequence file', dest='sequence', type=str,
 			help='The sequence file in either fastq or fasta format.')
 parser.add_argument('-p', '--primers', metavar='Primer file', dest='primer', type=str,
-			help='Seperated value file containing the primers. Format = primer_name,primer_sequence')
+			help='Separated value file containing the primers. Format = primer_name,primer_sequence')
 parser.add_argument('-m', '--mis', metavar='Mismatches allowed', dest='mis', type=int,
 			help='The maximum number of mismatches allowed between the primer and reads (default = 0)', default=0)
 parser.add_argument('-s', '--shift', metavar='Nucleotide shift allowed', dest='shift', type=int,
@@ -34,7 +34,7 @@ parser.add_argument('-d', '--delimiter', metavar='CSV delimiter', dest='delimite
 parser.add_argument('-c', '--cores', metavar='Number of Cores', dest='cores', type=int,
 			help='The number of CPU cores the script will use (default = max number of CPUs available)', default=multiprocessing.cpu_count())
 parser.add_argument('--chunk', metavar='Chunk size', dest='chunk_size', type=int,
-			help='The maximum number of reads that will be loaded into the memory.\nA higher value will be faster but will take up more RAM space. (default = 100.000 (about 100-200mb depending on read size))', default=100000)
+			help='The maximum number of reads that will be loaded into the memory.\nA higher value will be faster but will take up more RAM space. (default = 25.000 * number of CPUs)', default=(25000*multiprocessing.cpu_count()))
 
 args = parser.parse_args()
 
@@ -96,8 +96,11 @@ def extract_primers():
 	directory = os.path.dirname(os.path.realpath(args.sequence)) + '/'
 	extension = os.path.splitext(args.sequence)[1]
 
+	# sanatize possible tab delimiters
+	if args.delimiter == 'tab': args.delimiter = '\t'
+
 	# walk through the primers in the primer file
-	primer_file = csv.reader(open(args.primer), delimiter=args.delimiter)
+	primer_file = csv.reader(open(args.primer), delimiter=args.delimiter.decode('string_escape'))
 	for line in primer_file:
 
 		# sanatize the primer names
