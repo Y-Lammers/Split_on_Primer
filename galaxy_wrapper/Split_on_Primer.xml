@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<tool id="Split_on_Primer" name="Split_on_Primer" version="0.2.5" force_history_refresh="True">
+  <description>Demultiplex a sequence file based on the used primers.</description>
+
+  <!-- collect the parameters and provide these to the wrapper script -->
+  <command interpreter="python">
+    Split_on_Primer_wrapper.py
+    --sequence_file $input
+    --primers $primers
+    --mis $mis
+    --shift $shift
+    #if $Trim.value == True:
+    --trim
+    #end if
+    --delimiter $delim
+    --output $output $output.id $__new_file_path__
+  </command>
+
+  <inputs>
+    <param format="fastq" name="input" type="data" label="Read file in FASTA or FASTQ format"/>
+
+    <param format="txt" name="primers" type="data" label="Primer file (format: Primer,Sequence)"/>
+    <param name="delim" type="text" label="Delimiter character used in the Primer file" value="," size="2"/>
+
+    <param name="mis" type="integer" label="Maximum number of mismatches allowed" value="1" min="0"/>
+    <param name="shift" type="integer" label="Maximum sequence shift allowed, each frameshift count towards the maximum number of mismatces" value="1" min="0"/>
+    <param name="Trim" type="boolean" checked="yes" label="Trim the primers"/>
+
+  </inputs>
+
+  <outputs>
+    <data format="tabular" name="output" label="Demultiplexed sequence files"/>
+  </outputs>
+
+  <tests>
+  </tests>
+
+  <help>
+
+    Split_on_Primer
+
+  </help>
+
+</tool>
