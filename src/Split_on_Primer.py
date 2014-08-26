@@ -52,7 +52,7 @@ def extract_sequences():
 	# walk through the header and obtain the sequences (and quality score if applicable)
         for headers in lines:
 		header = headers.next().strip()
-		if file_format == '>': sequence = [''.join(line.strip() for line in lines.next())]
+		if file_format == '>': sequence = [''.join(line.strip() for line in lines.next()).upper()]
 		else:
 			temporary_list, sequence, quality = [line.strip() for line in lines.next()], [], []
 		
@@ -75,7 +75,7 @@ def extract_sequences():
 					quality += [line.strip() for line in lines.next()]
 			
 			# join the sequence lines and quality lines together
-			sequence = [''.join(sequence), ''.join(quality)]
+			sequence = [''.join(sequence).upper(), ''.join(quality)]
 				
 		# yield the header + sequence
 		yield [header, sequence]
@@ -93,8 +93,12 @@ def extract_primers():
 
 	# set the output dictionary (same folders as the sequence file)
 	# and get the extention for the ouput files (sames as input file)
+	#directory = os.path.dirname(os.path.realpath(args.sequence)) + '/'
+	#directory = os.path.splitext(args.sequence)[0] + '-'
 	directory = os.path.dirname(os.path.realpath(args.sequence)) + '/'
+        base = os.path.splitext(os.path.basename(args.sequence))[0]
 	extension = os.path.splitext(args.sequence)[1]
+	directory = directory + base.replace('_','-') + '-'
 
 	# sanatize possible tab delimiters
 	if args.delimiter == 'tab': args.delimiter = '\t'
@@ -115,7 +119,7 @@ def extract_primers():
 		# variants with the sequence shifts needed
 		length = len(line[1])
 		for i in range(0,args.shift+1):
-			primer_list.append([line[0], line[1][i:], length])
+			primer_list.append([line[0], line[1][i:].upper(), length])
 		
 		# add output file to the file_dictionary
 		file_dictionary[line[0]] = output_file
