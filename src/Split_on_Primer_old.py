@@ -107,9 +107,6 @@ def extract_primers():
 	primer_file = csv.reader(open(args.primer), delimiter=args.delimiter.decode('string_escape'))
 	for line in primer_file:
 
-		# skipp comment lines in primer file
-		if line[0][0] == '#': continue
-
 		# sanatize the primer names
 		line[0] = ''.join([l for l in line[0] if l.isalnum() or l in '-_'])
 
@@ -135,33 +132,11 @@ def extract_primers():
 	return [primer_list, file_dictionary]
 
 
-def compare_nuc(p, n):
-
-	# compare the primer and sequence nucleotides
-	# accounting for ambigious nucleotides in the pimer sequence
-
-	# ambigiuous dictionary
-	ambi = {'R': ['A', 'G'], 'Y': ['C', 'T'], 'S': ['G', 'C'], 'W': ['A', 'T'],
-		'K': ['G', 'T'], 'M': ['A', 'C'], 'B': ['C', 'G', 'T'], 'D': ['A', 'G', 'T'],
-		'H': ['A', 'C', 'T'], 'V': ['A', 'C', 'G'], 'N': ['A', 'C', 'G', 'T']}
-
-	# if the primer nucleotide is an ambigious character
-	# check all the possible translations, return FALSE if present
-	if p in ambi:
-		temp = []
-		for sub in ambi[p]:
-			temp.append(sub != n)
-		return min(temp)
-	# if both nucleotides are normal, make just return the compbare boolean
-	else:
-		return p != n
-
-
 def hamming_distance(sequence, primer):
 
 	# calculate the hamming distance between the primer and read sequence
 	# return the calculated distance
-	return sum([compare_nuc(p_nuc,s_nuc) for s_nuc, p_nuc in zip(sequence, primer)])
+	return sum([s_nuc != p_nuc for s_nuc, p_nuc in zip(sequence, primer)])
 
 
 def levenshtein_distance(sequence, primer):
@@ -175,7 +150,7 @@ def levenshtein_distance(sequence, primer):
         for pos_seq, nuc_seq in enumerate(sequence):
                 current = [pos_seq + 1]
                 for pos_prim, prim_seq in enumerate(primer):
-			insert, delete, change = previous[pos_prim + 1]+1, current[pos_prim]+1, previous[pos_prim] + compare_nuc(prim_seq,nuc_seq)
+                        insert, delete, change = previous[pos_prim + 1]+1, current[pos_prim]+1, previous[pos_prim] + (nuc_seq != prim_seq) 
                         current.append(min(insert, delete, change))
                 previous = current
 
