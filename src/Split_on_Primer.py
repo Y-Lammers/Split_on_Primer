@@ -171,16 +171,16 @@ def levenshtein_distance(sequence, primer):
 	# was larger than the maximum mismatch and the --mis argument is
 	# greater than 0 (default)
 
-        previous = xrange(len(sequence) + 1)
-        for pos_seq, nuc_seq in enumerate(sequence):
-                current = [pos_seq + 1]
-                for pos_prim, prim_seq in enumerate(primer):
+	previous = xrange(len(sequence) + 1)
+	for pos_seq, nuc_seq in enumerate(sequence):
+		current = [pos_seq + 1]
+		for pos_prim, prim_seq in enumerate(primer):
 			insert, delete, change = previous[pos_prim + 1]+1, current[pos_prim]+1, previous[pos_prim] + compare_nuc(prim_seq,nuc_seq)
-                        current.append(min(insert, delete, change))
-                previous = current
+			current.append(min(insert, delete, change))
+		previous = current
 
 	# return the distance
-        return previous[-1]
+	return previous[-1]
 
 
 def trim_primer(sequence, length):
