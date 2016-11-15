@@ -52,7 +52,7 @@ def extract_sequences():
 	# walk through the header and obtain the sequences (and quality score if applicable)
         for headers in lines:
 		header = headers.next().strip()
-		if file_format == '>': sequence = [''.join(line.strip() for line in lines.next())]
+		if file_format == '>': sequence = [''.join(line.strip() for line in lines.next()).upper()]
 		else:
 			temporary_list, sequence, quality = [line.strip() for line in lines.next()], [], []
 		
@@ -75,7 +75,7 @@ def extract_sequences():
 					quality += [line.strip() for line in lines.next()]
 			
 			# join the sequence lines and quality lines together
-			sequence = [''.join(sequence), ''.join(quality)]
+			sequence = [''.join(sequence).upper(), ''.join(quality)]
 				
 		# yield the header + sequence
 		yield [header, sequence]
@@ -93,8 +93,12 @@ def extract_primers():
 
 	# set the output dictionary (same folders as the sequence file)
 	# and get the extention for the ouput files (sames as input file)
+	#directory = os.path.dirname(os.path.realpath(args.sequence)) + '/'
+	#directory = os.path.splitext(args.sequence)[0] + '-'
 	directory = os.path.dirname(os.path.realpath(args.sequence)) + '/'
+        base = os.path.splitext(os.path.basename(args.sequence))[0]
 	extension = os.path.splitext(args.sequence)[1]
+	directory = directory + base.replace('_','-') + '-'
 
 	# sanatize possible tab delimiters
 	if args.delimiter == 'tab': args.delimiter = '\t'
@@ -103,33 +107,61 @@ def extract_primers():
 	primer_file = csv.reader(open(args.primer), delimiter=args.delimiter.decode('string_escape'))
 	for line in primer_file:
 
+		# skipp comment lines in primer file
+		if line[0][0] == '#': continue
+
 		# sanatize the primer names
 		line[0] = ''.join([l for l in line[0] if l.isalnum() or l in '-_'])
 
 		# open the output_file
 		output_file = open(directory+line[0]+extension,'w')
+		if line[0] not in file_dictionary:
+			print '{0}{1}{2}'.format(directory, line[0], extension)
 		
 		# if the --shift argument > 0, create different primer
 		# variants with the sequence shifts needed
 		length = len(line[1])
 		for i in range(0,args.shift+1):
-			primer_list.append([line[0], line[1][i:], length])
+			primer_list.append([line[0], line[1][i:].upper(), length])
 		
 		# add output file to the file_dictionary
 		file_dictionary[line[0]] = output_file
 
 	# create the unsorted file
 	file_dictionary['unsorted'] = open(directory+'unsorted'+extension,'w')
+	print '{0}{1}{2}'.format(directory, 'unsorted', extension)
 
 	# return the primer dictionary
 	return [primer_list, file_dictionary]
+
+
+def compare_nuc(p, n):
+
+	# compare the primer and sequence nucleotides
+	# accounting for ambigious nucleotides in the pimer sequence
+
+	# ambigiuous dictionary
+	ambi = {'R': ['A', 'G'], 'Y': ['C', 'T'], 'S': ['G', 'C'], 'W': ['A', 'T'],
+		'K': ['G', 'T'], 'M': ['A', 'C'], 'B': ['C', 'G', 'T'], 'D': ['A', 'G', 'T'],
+		'H': ['A', 'C', 'T'], 'V': ['A', 'C', 'G'], 'N': ['A', 'C', 'G', 'T']}
+
+	# if the primer nucleotide is an ambigious character
+	# check all the possible translations, return FALSE if present
+	if p in ambi:
+		temp = []
+		for sub in ambi[p]:
+			temp.append(sub != n)
+		return min(temp)
+	# if both nucleotides are normal, make just return the compbare boolean
+	else:
+		return p != n
 
 
 def hamming_distance(sequence, primer):
 
 	# calculate the hamming distance between the primer and read sequence
 	# return the calculated distance
-	return sum([s_nuc != p_nuc for s_nuc, p_nuc in zip(sequence, primer)])
+	return sum([compare_nuc(p_nuc,s_nuc) for s_nuc, p_nuc in zip(sequence, primer)])
 
 
 def levenshtein_distance(sequence, primer):
@@ -139,16 +171,16 @@ def levenshtein_distance(sequence, primer):
 	# was larger than the maximum mismatch and the --mis argument is
 	# greater than 0 (default)
 
-        previous = xrange(len(sequence) + 1)
-        for pos_seq, nuc_seq in enumerate(sequence):
-                current = [pos_seq + 1]
-                for pos_prim, prim_seq in enumerate(primer):
-                        insert, delete, change = previous[pos_prim + 1]+1, current[pos_prim]+1, previous[pos_prim] + (nuc_seq != prim_seq) 
-                        current.append(min(insert, delete, change))
-                previous = current
+	previous = xrange(len(sequence) + 1)
+	for pos_seq, nuc_seq in enumerate(sequence):
+		current = [pos_seq + 1]
+		for pos_prim, prim_seq in enumerate(primer):
+			insert, delete, change = previous[pos_prim + 1]+1, current[pos_prim]+1, previous[pos_prim] + compare_nuc(prim_seq,nuc_seq)
+			current.append(min(insert, delete, change))
+		previous = current
 
 	# return the distance
-        return previous[-1]
+	return previous[-1]
 
 
 def trim_primer(sequence, length):
